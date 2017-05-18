@@ -148,11 +148,12 @@ public class MainActivity extends Activity
     private LocationManager mLocationManager;
     private float mSpeed = 0.0f;
     private DetectActivity mDetectActivity;
+    private double mFftMax = 0.0;
+    private double mFftE = 0.0;
+    private double mFftPeak = 0;
 
 
-    public enum ActivityState { UNSURE, STANDING, WALKING, RUNNING };
-
-
+    public enum ActivityState { UNSURE, STANDING, WALKING, RUNNING, CYCLING, DRIVING };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -311,7 +312,7 @@ public class MainActivity extends Activity
                     LOCATION_PERMISSION_REQUEST_CODE);
         } else {
             // Access to the location has been granted to the app.
-            mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 2.0f, this);
+            mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 4.0f, this);
         }
     }
 
@@ -447,6 +448,14 @@ public class MainActivity extends Activity
             mNotificationBuilder
                     .setSmallIcon(R.drawable.ic_accessibility_black_24dp)
                     .setContentText("You are running");
+        } else if (activityState == ActivityState.CYCLING) {
+            mNotificationBuilder
+                    .setSmallIcon(R.drawable.ic_bicycle_blac_24dp)
+                    .setContentText("You are cycling");
+        } else if (activityState == ActivityState.DRIVING) {
+            mNotificationBuilder
+                    .setSmallIcon(R.drawable.ic_car_black_24dp)
+                    .setContentText("You are driving");
         } else { // unsure
             mNotificationBuilder
                     .setSmallIcon(R.drawable.ic_help_outline_black_24dp)
@@ -508,14 +517,25 @@ public class MainActivity extends Activity
 
                 final Number magnitude[] = new Number[mWindowSize / 2];
                 double fftMax = 0.0;
+                int peakIndex = 0;
                 double fftE = 0.0;
                 for (int i = 0; i < mWindowSize / 2; ++i) {
-                    magnitude[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]);
-                    if (magnitude[i].doubleValue() > fftMax) fftMax = magnitude[i].doubleValue();
-                    //magnitude[i] = //re[i] * re[i] + im[i] * im[i];
+                    double value = Math.sqrt(re[i] * re[i] + im[i] * im[i]);
+                    magnitude[i] = value;
+                    fftE += value;
+                    if (value > fftMax) {
+                        fftMax = value;
+                        peakIndex = i;
+                    }
                 }
 
 
+                // update field values
+                mFftMax = fftMax;
+                mFftE = fftE;
+                double maxFrequency = (1.0 / mSampleRateUS * 1000000);
+                double hz = (peakIndex / mWindowSize) * maxFrequency;
+                mFftPeak = hz;
 
                 /*
                 for (int i = 0; i < mWindowSize / 2; ++i) {
@@ -551,6 +571,40 @@ public class MainActivity extends Activity
         @Override
         public void run() {
             android.os.Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
+
+            double energylevel = mFftMax / mFftE;
+            Log.d(TAG, "Energylevel: " + energylevel);
+            Log.d(TAG, "Speed: " + mSpeed);
+
+            final double ACTIVITY_THRESHOLD = 0.135;
+            final double WALKING_SPEED = 0.7;
+
+            if (energylevel > ACTIVITY_THRESHOLD) { // device is above
+                if (mSpeed > 0.7 && mSpeed <= 1.3) {
+                    Log.d(TAG, "Activity detected: walking");
+                    updateNotification(ActivityState.WALKING);
+                } else if (mSpeed > 1.3 && mSpeed < 9 && energylevel > 0.2) {
+                    Log.d(TAG, "Activity detected: running");
+                    updateNotification(ActivityState.RUNNING);
+                } else if (mSpeed > 1.3 && mSpeed < 20 && energylevel < 0.25) {
+                    Log.d(TAG, "Activity detected: cycling");
+                    updateNotification(ActivityState.CYCLING);
+                }
+                else {
+                    Log.d(TAG, "Activity detected: not sure");
+                    updateNotification(ActivityState.UNSURE);
+                }
+            } else {
+                if (mSpeed < 0.7) {
+                    Log.d(TAG, "Activity detected: sitting/standing");
+                    updateNotification(ActivityState.STANDING);
+                } else {
+                    Log.d(TAG, "Activity detected: driving");
+                    updateNotification(ActivityState.DRIVING);
+                }
+            }
+
+            /*
             if (mFftAverages.size() == LEN_AVERAGES) {
                 // calculate complete average
                 Double sum = 0.0;
@@ -578,6 +632,7 @@ public class MainActivity extends Activity
                 Log.d(TAG, "Activity FFT average: " + average);
                 mFftAverages.clear();
             }
+            */
             mActivityHandler.postDelayed(this, 5000);
         }
 
