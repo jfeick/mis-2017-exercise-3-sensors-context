@@ -1,3 +1,4 @@
+package de.uni_weimar.benike.joggernaut;
 /*
  *  Copyright 2006-2007 Columbia University.
  *
