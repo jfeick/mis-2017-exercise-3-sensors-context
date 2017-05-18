@@ -21,21 +21,28 @@ public class MainActivity extends AppCompatActivity {
 
 
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Process;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.TaskStackBuilder;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.View;
 import android.widget.SeekBar;
@@ -57,7 +64,6 @@ import java.text.NumberFormat;
 import java.text.ParsePosition;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 
 /* The following code snippets have been used as a reference:
     http://androidplot.com/docs/a-dynamic-xy-plot/
@@ -68,7 +74,9 @@ import java.util.Collections;
 
 
 public class MainActivity extends Activity
-        implements SeekBar.OnSeekBarChangeListener, SensorEventListener
+        implements SeekBar.OnSeekBarChangeListener,
+                    SensorEventListener,
+                    LocationListener
 
 {
     private static final String TAG = MainActivity.class.getName();
@@ -137,6 +145,10 @@ public class MainActivity extends Activity
         @Override
         public Number parse(String s, ParsePosition parsePosition) { return null;}
     };
+    private LocationManager mLocationManager;
+    private float mSpeed = 0.0f;
+    private DetectActivity mDetectActivity;
+
 
     public enum ActivityState { UNSURE, STANDING, WALKING, RUNNING };
 
@@ -156,6 +168,9 @@ public class MainActivity extends Activity
                 mAccelerometerSensor = sensor;
             }
         }
+
+        mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        startLocationServices();
 
         // if we can't access the accelerometer sensor then exit:
         if (mAccelerometerSensor == null) {
@@ -280,9 +295,24 @@ public class MainActivity extends Activity
         mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         mNotificationManager.notify(mNotificationId, mNotificationBuilder.build());
 
-        Runnable detectActivity = new DetectActivity();
-        mDetectActivityThread = new Thread(detectActivity);
+        mDetectActivity = new DetectActivity();
+        mDetectActivityThread = new Thread(mDetectActivity);
         mDetectActivityThread.start();
+    }
+
+
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
+    private void startLocationServices() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            // Permission to access the location is missing.
+            ActivityCompat.requestPermissions(MainActivity.this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        } else {
+            // Access to the location has been granted to the app.
+            mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 2.0f, this);
+        }
     }
 
     private void resetSeries() {
@@ -351,14 +381,17 @@ public class MainActivity extends Activity
 
     private void cleanup() {
         // unregister with the orientation sensor before exiting:
+        mDetectActivity.shutdown();
         mSensorManager.unregisterListener(this);
+        mLocationManager.removeUpdates(this);
+        mNotificationManager.cancelAll();
     }
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
+
         cleanup();
-        mNotificationManager.cancel(mNotificationId);
+        super.onDestroy();
     }
 
     // Called whenever a new accelSensor reading is taken.
@@ -425,6 +458,29 @@ public class MainActivity extends Activity
                 mNotificationBuilder.build());
     }
 
+    boolean doubleBackToExitPressedOnce = false;
+
+    @Override
+    public void onBackPressed() {
+        if (doubleBackToExitPressedOnce) {
+            Toast.makeText(this, "Pressed twice!", Toast.LENGTH_SHORT).show();
+            super.onBackPressed();
+            finish();
+            return;
+        }
+
+        this.doubleBackToExitPressedOnce = true;
+        Toast.makeText(this, "Please click BACK again to exit", Toast.LENGTH_SHORT).show();
+
+        new Handler().postDelayed(new Runnable() {
+
+            @Override
+            public void run() {
+                doubleBackToExitPressedOnce=false;
+            }
+        }, 2000);
+    }
+
     private class PerformFft implements Runnable {
 
         private Handler mFftHandler = new Handler();
@@ -451,12 +507,15 @@ public class MainActivity extends Activity
                 mFft.fft(re, im);
 
                 final Number magnitude[] = new Number[mWindowSize / 2];
-                double fftMax = 0;
+                double fftMax = 0.0;
+                double fftE = 0.0;
                 for (int i = 0; i < mWindowSize / 2; ++i) {
                     magnitude[i] = Math.sqrt(re[i] * re[i] + im[i] * im[i]);
                     if (magnitude[i].doubleValue() > fftMax) fftMax = magnitude[i].doubleValue();
                     //magnitude[i] = //re[i] * re[i] + im[i] * im[i];
                 }
+
+
 
                 /*
                 for (int i = 0; i < mWindowSize / 2; ++i) {
@@ -521,5 +580,35 @@ public class MainActivity extends Activity
             }
             mActivityHandler.postDelayed(this, 5000);
         }
+
+        public void shutdown() {
+            mActivityHandler.removeCallbacksAndMessages(null);
+        }
+    }
+
+
+
+    @Override
+    public void onLocationChanged(Location location) {
+        Log.d(TAG, "Location changed: " + location);
+
+        mSpeed = location.getSpeed();
+        Toast.makeText(this, "Location changed. Speed: " + mSpeed, Toast.LENGTH_SHORT)
+                .show();
+    }
+
+    @Override
+    public void onStatusChanged(String provider, int status, Bundle extras) {
+
+    }
+
+    @Override
+    public void onProviderEnabled(String provider) {
+
+    }
+
+    @Override
+    public void onProviderDisabled(String provider) {
+
     }
 }
