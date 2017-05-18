@@ -661,10 +661,10 @@ public class MainActivity extends Activity
             final double ACTIVITY_THRESHOLD = 0.135;
             final double WALKING_SPEED = 0.7;
 
-            boolean debug = true;
+            boolean debug = false;
             boolean debug_walking = false;
             boolean debug_running = false;
-            boolean debug_cycling = true;
+            boolean debug_cycling = false;
             boolean debug_sitting = false;
             boolean debug_driving = false;
 
