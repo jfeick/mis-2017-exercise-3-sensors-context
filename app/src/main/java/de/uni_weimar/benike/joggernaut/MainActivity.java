@@ -36,15 +36,19 @@ import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Process;
+import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.TaskStackBuilder;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -80,6 +84,8 @@ public class MainActivity extends Activity
 
 {
     private static final String TAG = MainActivity.class.getName();
+    private static final int PICK_CYCLING_MUSIC_RESULT = 23;
+    private static final int PICK_RUNNING_MUSIC_RESULT = 42;
 
     private XYPlot mAccelerometerPlot = null;
     private XYPlot mFftPlot = null;
@@ -151,9 +157,13 @@ public class MainActivity extends Activity
     private double mFftMax = 0.0;
     private double mFftE = 0.0;
     private double mFftPeak = 0;
-
+    private Uri mCyclingMusicUri = null;
+    private Uri mRunningMusicUri = null;
+    private int PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE = 2;
+    private MediaPlayer mMediaPlayer;
 
     public enum ActivityState { UNSURE, STANDING, WALKING, RUNNING, CYCLING, DRIVING };
+    private ActivityState mLastActivityState = ActivityState.UNSURE;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -169,6 +179,17 @@ public class MainActivity extends Activity
                 mAccelerometerSensor = sensor;
             }
         }
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(MainActivity.this,
+                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                    PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE);
+        }
+        else {
+            // TODO: handle case
+        }
+
+        mMediaPlayer = new MediaPlayer();
 
         mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         startLocationServices();
@@ -285,6 +306,30 @@ public class MainActivity extends Activity
                 .setContentText("Trying to guess your activity")
                 .setOngoing(true);
 
+        Button pickCyclingMusicButton = (Button) this.findViewById(R.id.pickCyclingMusicButton);
+        Button pickRunningMusicButton = (Button) this.findViewById(R.id.pickRunningMusicButton);
+        pickCyclingMusicButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent();
+                intent.setType("audio/*");
+                intent.setAction(Intent.ACTION_GET_CONTENT);
+                startActivityForResult(Intent.createChooser(intent,"Select Audio "),  PICK_CYCLING_MUSIC_RESULT);
+
+            }
+        });
+        pickRunningMusicButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent();
+                intent.setType("audio/*");
+                intent.setAction(Intent.ACTION_GET_CONTENT);
+                startActivityForResult(Intent.createChooser(intent,"Select Audio "),  PICK_RUNNING_MUSIC_RESULT);
+                /* Intent intent = new Intent(Intent.ACTION_PICK, android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI);
+                startActivityForResult(intent, PICK_RUNNING_MUSIC_RESULT); */
+            }
+        });
+
         Intent resultIntent = new Intent(this, MainActivity.class);
 
         TaskStackBuilder stackBuilder = TaskStackBuilder.create(this);
@@ -299,8 +344,27 @@ public class MainActivity extends Activity
         mDetectActivity = new DetectActivity();
         mDetectActivityThread = new Thread(mDetectActivity);
         mDetectActivityThread.start();
+
+
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (resultCode == RESULT_OK) {
+            if (requestCode == PICK_CYCLING_MUSIC_RESULT) {
+                Uri uri = data.getData();
+                mCyclingMusicUri = uri;
+                mLastActivityState = ActivityState.UNSURE;
+            }
+            else if (requestCode == PICK_RUNNING_MUSIC_RESULT)
+            {
+                Uri uri = data.getData();
+                mRunningMusicUri = uri;
+                mLastActivityState = ActivityState.UNSURE;
+            }
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
 
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private void startLocationServices() {
@@ -386,6 +450,8 @@ public class MainActivity extends Activity
         mSensorManager.unregisterListener(this);
         mLocationManager.removeUpdates(this);
         mNotificationManager.cancelAll();
+        mMediaPlayer.stop();
+        mMediaPlayer.release();
     }
 
     @Override
@@ -434,32 +500,48 @@ public class MainActivity extends Activity
     }
 
     private void updateNotification(ActivityState activityState) {
-
+        if (activityState == mLastActivityState)
+            return;
+        mLastActivityState = activityState;
 
         if (activityState == ActivityState.STANDING) {
             mNotificationBuilder
                     .setSmallIcon(R.drawable.ic_accessibility_black_24dp)
                     .setContentText("You are standing/sitting");
+            mMediaPlayer.release();
         } else if (activityState == ActivityState.WALKING) {
             mNotificationBuilder
                     .setSmallIcon(R.drawable.ic_directions_walk_black_24dp)
                     .setContentText("You are walking");
+            mMediaPlayer.release();
         } else if (activityState == ActivityState.RUNNING) {
             mNotificationBuilder
                     .setSmallIcon(R.drawable.ic_accessibility_black_24dp)
                     .setContentText("You are running");
+            if (mRunningMusicUri != null) {
+                mMediaPlayer.release();
+                mMediaPlayer = MediaPlayer.create(this, mRunningMusicUri);
+                mMediaPlayer.start();
+            }
         } else if (activityState == ActivityState.CYCLING) {
             mNotificationBuilder
                     .setSmallIcon(R.drawable.ic_bicycle_blac_24dp)
                     .setContentText("You are cycling");
+            if (mCyclingMusicUri != null) {
+                mMediaPlayer.release();
+                mMediaPlayer = MediaPlayer.create(this, mCyclingMusicUri);
+                mMediaPlayer.start();
+            }
         } else if (activityState == ActivityState.DRIVING) {
             mNotificationBuilder
                     .setSmallIcon(R.drawable.ic_car_black_24dp)
                     .setContentText("You are driving");
+            mMediaPlayer.release();
         } else { // unsure
             mNotificationBuilder
                     .setSmallIcon(R.drawable.ic_help_outline_black_24dp)
                     .setContentText("Could not determine your activity...");
+            mMediaPlayer.release();
         }
 
         mNotificationManager.notify(
@@ -579,14 +661,21 @@ public class MainActivity extends Activity
             final double ACTIVITY_THRESHOLD = 0.135;
             final double WALKING_SPEED = 0.7;
 
-            if (energylevel > ACTIVITY_THRESHOLD) { // device is above
-                if (mSpeed > 0.7 && mSpeed <= 1.3) {
+            boolean debug = true;
+            boolean debug_walking = false;
+            boolean debug_running = false;
+            boolean debug_cycling = true;
+            boolean debug_sitting = false;
+            boolean debug_driving = false;
+
+            if (debug || energylevel > ACTIVITY_THRESHOLD) { // device is above
+                if (debug_walking || mSpeed > 0.7 && mSpeed <= 1.3) {
                     Log.d(TAG, "Activity detected: walking");
                     updateNotification(ActivityState.WALKING);
-                } else if (mSpeed > 1.3 && mSpeed < 9 && energylevel > 0.2) {
+                } else if (debug_running || mSpeed > 1.3 && mSpeed < 9 && energylevel > 0.2) {
                     Log.d(TAG, "Activity detected: running");
                     updateNotification(ActivityState.RUNNING);
-                } else if (mSpeed > 1.3 && mSpeed < 20 && energylevel < 0.25) {
+                } else if (debug_cycling || mSpeed > 1.3 && mSpeed < 20 && energylevel < 0.25) {
                     Log.d(TAG, "Activity detected: cycling");
                     updateNotification(ActivityState.CYCLING);
                 }
@@ -595,12 +684,15 @@ public class MainActivity extends Activity
                     updateNotification(ActivityState.UNSURE);
                 }
             } else {
-                if (mSpeed < 0.7) {
+                if (debug_sitting || mSpeed < 0.7) {
                     Log.d(TAG, "Activity detected: sitting/standing");
                     updateNotification(ActivityState.STANDING);
-                } else {
+                } else if (debug_driving || mSpeed >= 0.7) {
                     Log.d(TAG, "Activity detected: driving");
                     updateNotification(ActivityState.DRIVING);
+                } else {
+                    Log.d(TAG, "Activity detected: not sure");
+                    updateNotification(ActivityState.UNSURE);
                 }
             }
 

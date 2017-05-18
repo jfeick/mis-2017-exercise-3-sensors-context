@@ -18,7 +18,7 @@
             android:id="@+id/accelerometerPlot"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_weight="1"
+            android:layout_weight="5"
             title="Accelerometer History"
             style="@style/mis_chart.Light" />
 
@@ -50,7 +50,7 @@
             android:id="@+id/fftPlot"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_weight="1"
+            android:layout_weight="5"
             title="Accelerometer History"
             style="@style/mis_chart.Light" />
 
@@ -58,7 +58,6 @@
             android:orientation="horizontal"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
             android:layout_marginBottom="5dp">
 
             <TextView
@@ -76,6 +75,33 @@
                 android:progress="5"
                 android:max="16" />
 
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:text="Select Music"
+            android:id="@+id/MusicText" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/pickRunningMusicButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="left"
+                android:layout_weight="1"
+                android:text="Running Music" />
+            <Button
+                android:id="@+id/pickCyclingMusicButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="right"
+                android:layout_weight="1"
+                android:text="Cycling Music" />
         </LinearLayout>
 
     </LinearLayout>
